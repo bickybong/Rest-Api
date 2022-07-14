@@ -1,14 +1,77 @@
-from flask import Flask
-from flask_restful import Api, Resource
+from flask import Flask, request
+from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
+from flask_sqlalchemy import SQLAlchemy
+import sqlalchemy
 
 app = Flask(__name__)
 api = Api(app)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///database.db"
+db = SQLAlchemy(app)
+db.create_all()
 
-class HelloWorld(Resource):
-    def get(self):
-        return{"data": "Hello World"}
+class videoModel(db.Model):
+    id = db.Column(db.Integer, primary_key = True) 
+    name = db.Column(db.String(100), nullable = False)
+    views = db.Column(db.Integer, nullable = False)
+    likes = db.Column(db.Integer, nullable = False)
 
-api.add_resource(HelloWorld, "/helloworld")
+    def __repr__(self):
+        return f"Video(name = {name}, views = {views}, likes = {likes})"
+
+video_put_args = reqparse.RequestParser()
+video_put_args.add_argument("name", type=str, help="Name of video required", required= True)
+video_put_args.add_argument("views", type=int, help="Views of video required", required= True)
+video_put_args.add_argument("likes", type=int, help="Likes of video required", required= True)
+
+video_update_args = reqparse.RequestParser()
+video_update_args.add_argument("name", type=str, help="Name of video required")
+video_update_args.add_argument("views", type=int, help="Views of video required")
+video_update_args.add_argument("likes", type=int, help="Likes of video required")
+
+
+resourceFields = {
+    "id": fields.Integer,
+    "name": fields.String,
+    "views": fields.Integer,
+    "likes": fields.Integer
+}
+
+class video(Resource):
+    @marshal_with(resourceFields)
+    def get(self,video_id):
+        result = videoModel.query.fiter_by(id = video_id).first()
+        if not result:
+            abort(404, message="Could not find video with that id...")
+        return result
+
+    @marshal_with(resourceFields)    
+    def put(self, video_id):
+        args = video_put_args.parse_args()
+        result = videoModel.query.fiter_by(id = video_id).first()
+        if result:
+            abort(409, message = "Video id taken...")
+        video = videoModel(id=video_id, name=args["name"], views=args["views"], likes=args["likes"])
+        db.session.add(video)
+        db.session.commit()
+        return video, 201
+
+    @marshal_with(resourceFields)    
+    def patch(self, video_id):
+        args = video_update_args.parse_args()
+        result = videoModel.query.fiter_by(id = video_id).first()
+        if not result:
+            abort(404, message = "Video doesn't exist, cant update...")
+        if args["name"]:
+            result.name = args["name"]
+        if args["views"]:
+            result.name = args["views"]
+        if args["likes"]:
+            result.name = args["likes"]
+        
+        db.session.commit()
+        return result
+
+api.add_resource(video, "/video/<int:video_id>")
 
 if __name__ == "__main__":
     app.run(debug=True)
